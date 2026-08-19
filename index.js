@@ -9,27 +9,27 @@ const PORT = process.env.PORT || 3000;
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
+    api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// Media data
-const media = [
-    {
-        id: 1024,
-        title: "series",
-        type: "series",
-        publicId: "1024"
-    }
-];
+// These are Cloudinary asset folders.
+// "Home" is the Media Library root and is NOT included.
+const MEDIA_FOLDERS = {
+    movies: "Images/Movies",
+    series: "Images/Series",
+    anime: "Images/Anime",
+    posters: "Images/Posters",
+    banners: "Images/Banners",
+    other: "Images/Other"
+};
 
-// Create Cloudinary CDN URL
-function getImageUrl(publicId, width = 500) {
+function getImageUrl(publicId) {
     return cloudinary.url(publicId, {
         resource_type: "image",
         secure: true,
         transformation: [
             {
-                width,
+                width: 500,
                 crop: "limit",
                 fetch_format: "auto",
                 quality: "auto"
@@ -38,88 +38,61 @@ function getImageUrl(publicId, width = 500) {
     });
 }
 
-// Home
 app.get("/", (req, res) => {
     res.json({
         success: true,
-        message: "Media API is running"
+        message: "Cloudinary Media API is running"
     });
 });
 
-// Get all media
-app.get("/api/media", (req, res) => {
-    const result = media.map(item => ({
-        id: item.id,
-        title: item.title,
-        type: item.type,
-        publicId: item.publicId,
-        imageUrl: getImageUrl(item.publicId)
-    }));
+app.get("/api/media/:category", async (req, res) => {
+    try {
+        const category = req.params.category.toLowerCase();
 
-    res.json({
-        success: true,
-        count: result.length,
-        media: result
-    });
-});
+        const folder = MEDIA_FOLDERS[category];
 
-// Get media by type
-app.get("/api/media/:type", (req, res) => {
-    const type = req.params.type.toLowerCase();
+        if (!folder) {
+            return res.status(400).json({
+                success: false,
+                error: "Invalid media category",
+                availableCategories: Object.keys(MEDIA_FOLDERS)
+            });
+        }
 
-    const allowedTypes = [
-        "movies",
-        "series",
-        "anime",
-        "posters",
-        "banners",
-        "other"
-    ];
+        const result = await cloudinary.search
+            .expression(`asset_folder="${folder}"`)
+            .sort_by("created_at", "desc")
+            .max_results(500)
+            .execute();
 
-    if (!allowedTypes.includes(type)) {
-        return res.status(400).json({
-            success: false,
-            error: "Invalid media type",
-            allowedTypes
-        });
-    }
-
-    const normalizedType = type === "movies" ? "movie" : type.slice(0, -1);
-
-    const result = media
-        .filter(item => item.type === normalizedType)
-        .map(item => ({
-            id: item.id,
-            title: item.title,
-            type: item.type,
-            publicId: item.publicId,
-            imageUrl: getImageUrl(item.publicId)
+        const media = result.resources.map(asset => ({
+            id: asset.asset_id,
+            publicId: asset.public_id,
+            fileName: asset.display_name || asset.public_id,
+            format: asset.format,
+            width: asset.width,
+            height: asset.height,
+            bytes: asset.bytes,
+            createdAt: asset.created_at,
+            imageUrl: getImageUrl(asset.public_id)
         }));
 
-    res.json({
-        success: true,
-        type,
-        count: result.length,
-        media: result
-    });
-});
+        res.json({
+            success: true,
+            category: category,
+            folder: folder,
+            count: media.length,
+            media: media
+        });
 
-// Test a specific Cloudinary image
-app.get("/api/image", (req, res) => {
-    const publicId = req.query.publicId;
+    } catch (error) {
+        console.error("Cloudinary Search Error:", error);
 
-    if (!publicId) {
-        return res.status(400).json({
+        res.status(500).json({
             success: false,
-            error: "publicId is required"
+            error: error.message
         });
     }
-
-    res.json({
-        success: true,
-        publicId,
-        imageUrl: getImageUrl(publicId)
-    });
 });
 
 app.listen(PORT, () => {
