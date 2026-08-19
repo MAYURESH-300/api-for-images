@@ -4,7 +4,7 @@ const express = require("express");
 const cloudinary = require("cloudinary").v2;
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -12,21 +12,24 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const movies = [
+// Media data
+const media = [
     {
         id: 1024,
         title: "series",
-        poster: "1024"
+        type: "series",
+        publicId: "1024"
     }
 ];
 
+// Create Cloudinary CDN URL
 function getImageUrl(publicId, width = 500) {
     return cloudinary.url(publicId, {
         resource_type: "image",
         secure: true,
         transformation: [
             {
-                width: width,
+                width,
                 crop: "limit",
                 fetch_format: "auto",
                 quality: "auto"
@@ -39,11 +42,69 @@ function getImageUrl(publicId, width = 500) {
 app.get("/", (req, res) => {
     res.json({
         success: true,
-        message: "Cloudinary Movie API is running"
+        message: "Media API is running"
     });
 });
 
-// Test one image
+// Get all media
+app.get("/api/media", (req, res) => {
+    const result = media.map(item => ({
+        id: item.id,
+        title: item.title,
+        type: item.type,
+        publicId: item.publicId,
+        imageUrl: getImageUrl(item.publicId)
+    }));
+
+    res.json({
+        success: true,
+        count: result.length,
+        media: result
+    });
+});
+
+// Get media by type
+app.get("/api/media/:type", (req, res) => {
+    const type = req.params.type.toLowerCase();
+
+    const allowedTypes = [
+        "movies",
+        "series",
+        "anime",
+        "posters",
+        "banners",
+        "other"
+    ];
+
+    if (!allowedTypes.includes(type)) {
+        return res.status(400).json({
+            success: false,
+            error: "Invalid media type",
+            allowedTypes
+        });
+    }
+
+    const normalizedType = type === "movies" ? "movie" : type.slice(0, -1);
+
+    const result = media
+        .filter(item => item.type === normalizedType)
+        .map(item => ({
+            id: item.id,
+            title: item.title,
+            type: item.type,
+            publicId: item.publicId,
+            imageUrl: getImageUrl(item.publicId)
+        }));
+
+    res.json({
+        success: true,
+        type,
+        count: result.length,
+        media: result
+    });
+});
+
+// Test a specific Cloudinary image
 app.get("/api/image", (req, res) => {
     const publicId = req.query.publicId;
 
@@ -54,29 +115,13 @@ app.get("/api/image", (req, res) => {
         });
     }
 
-    const imageUrl = getImageUrl(publicId);
-
     res.json({
         success: true,
-        publicId: publicId,
-        imageUrl: imageUrl
-    });
-});
-
-// Get movies
-app.get("/api/movies", (req, res) => {
-    const result = movies.map(movie => ({
-        ...movie,
-        posterUrl: getImageUrl(movie.poster)
-    }));
-
-    res.json({
-        success: true,
-        count: result.length,
-        movies: result
+        publicId,
+        imageUrl: getImageUrl(publicId)
     });
 });
 
 app.listen(PORT, () => {
-    console.log(`API running at http://localhost:${PORT}`);
+    console.log(`API running on port ${PORT}`);
 });
