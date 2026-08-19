@@ -12,20 +12,19 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// These are Cloudinary asset folders.
-// "Home" is the Media Library root and is NOT included.
-const MEDIA_FOLDERS = {
-    movies: "Images/Movies",
-    series: "Images/Series",
-    anime: "Images/Anime",
-    posters: "Images/Posters",
-    banners: "Images/Banners",
-    other: "Images/Other"
-};
+const ALLOWED_TYPES = [
+    "movies",
+    "series",
+    "anime",
+    "posters",
+    "banners",
+    "other"
+];
 
 function getImageUrl(publicId) {
     return cloudinary.url(publicId, {
         resource_type: "image",
+        type: "upload",
         secure: true,
         transformation: [
             {
@@ -41,52 +40,56 @@ function getImageUrl(publicId) {
 app.get("/", (req, res) => {
     res.json({
         success: true,
-        message: "Cloudinary Media API is running"
+        message: "Cloudinary Image API is running"
     });
 });
 
-app.get("/api/media/:category", async (req, res) => {
+app.get("/api/images/:type/:id", async (req, res) => {
     try {
-        const category = req.params.category.toLowerCase();
+        const type = req.params.type.toLowerCase();
+        const id = req.params.id;
 
-        const folder = MEDIA_FOLDERS[category];
-
-        if (!folder) {
+        if (!ALLOWED_TYPES.includes(type)) {
             return res.status(400).json({
                 success: false,
-                error: "Invalid media category",
-                availableCategories: Object.keys(MEDIA_FOLDERS)
+                error: "Invalid type",
+                allowedTypes: ALLOWED_TYPES
             });
         }
 
-        const result = await cloudinary.search
-            .expression(`asset_folder="${folder}"`)
-            .sort_by("created_at", "desc")
-            .max_results(500)
-            .execute();
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                error: "ID is required"
+            });
+        }
 
-        const media = result.resources.map(asset => ({
-            id: asset.asset_id,
-            publicId: asset.public_id,
-            fileName: asset.display_name || asset.public_id,
-            format: asset.format,
-            width: asset.width,
-            height: asset.height,
-            bytes: asset.bytes,
-            createdAt: asset.created_at,
-            imageUrl: getImageUrl(asset.public_id)
-        }));
+        // Check whether the Cloudinary asset exists.
+        const asset = await cloudinary.api.resource(id, {
+            resource_type: "image",
+            type: "upload"
+        });
+
+        const imageUrl = getImageUrl(asset.public_id);
 
         res.json({
             success: true,
-            category: category,
-            folder: folder,
-            count: media.length,
-            media: media
+            type: type,
+            id: id,
+            publicId: asset.public_id,
+            imageUrl: imageUrl
         });
 
     } catch (error) {
-        console.error("Cloudinary Search Error:", error);
+        console.error("Cloudinary error:", error);
+
+        if (error.error && error.error.http_code === 404) {
+            return res.status(404).json({
+                success: false,
+                error: "Image not found",
+                id: req.params.id
+            });
+        }
 
         res.status(500).json({
             success: false,
