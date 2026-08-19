@@ -12,31 +12,6 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-const FOLDERS = {
-    movies: "Images/Movies",
-    series: "Images/Series",
-    anime: "Images/Anime",
-    posters: "Images/Posters",
-    banners: "Images/Banners",
-    other: "Images/Other"
-};
-
-function getImageUrl(publicId) {
-    return cloudinary.url(publicId, {
-        resource_type: "image",
-        type: "upload",
-        secure: true,
-        transformation: [
-            {
-                width: 500,
-                crop: "limit",
-                fetch_format: "auto",
-                quality: "auto"
-            }
-        ]
-    });
-}
-
 app.get("/", (req, res) => {
     res.json({
         success: true,
@@ -44,18 +19,9 @@ app.get("/", (req, res) => {
     });
 });
 
-app.get("/api/images/:type/:id", async (req, res) => {
+app.get("/api/:id", async (req, res) => {
     try {
-        const type = req.params.type.toLowerCase();
         const id = req.params.id;
-
-        if (!FOLDERS[type]) {
-            return res.status(400).json({
-                success: false,
-                error: "Invalid type",
-                allowedTypes: Object.keys(FOLDERS)
-            });
-        }
 
         if (!id) {
             return res.status(400).json({
@@ -64,17 +30,8 @@ app.get("/api/images/:type/:id", async (req, res) => {
             });
         }
 
-        const folder = FOLDERS[type];
-
-        console.log("Looking for:");
-        console.log("Type:", type);
-        console.log("Folder:", folder);
-        console.log("Public ID:", id);
-
         const result = await cloudinary.search
-            .expression(
-                `public_id="${id}" AND asset_folder="${folder}"`
-            )
+            .expression(`public_id="${id}"`)
             .max_results(1)
             .execute();
 
@@ -82,32 +39,40 @@ app.get("/api/images/:type/:id", async (req, res) => {
             return res.status(404).json({
                 success: false,
                 error: "Image not found",
-                type: type,
-                id: id,
-                folder: folder
+                id: id
             });
         }
 
         const asset = result.resources[0];
 
-        const imageUrl = getImageUrl(asset.public_id);
+        const imageUrl = cloudinary.url(asset.public_id, {
+            resource_type: asset.resource_type,
+            type: "upload",
+            secure: true,
+            transformation: [
+                {
+                    width: 500,
+                    crop: "limit",
+                    fetch_format: "auto",
+                    quality: "auto"
+                }
+            ]
+        });
 
         res.json({
             success: true,
-            type: type,
             id: id,
-            folder: folder,
+            folder: asset.asset_folder || null,
             publicId: asset.public_id,
             imageUrl: imageUrl
         });
 
     } catch (error) {
-        console.error("FULL CLOUDINARY ERROR:");
         console.error(error);
 
         res.status(500).json({
             success: false,
-            error: error.message || "Cloudinary request failed"
+            error: error.message
         });
     }
 });
