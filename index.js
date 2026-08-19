@@ -12,14 +12,14 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-const ALLOWED_TYPES = [
-    "movies",
-    "series",
-    "anime",
-    "posters",
-    "banners",
-    "other"
-];
+const FOLDERS = {
+    movies: "Images/Movies",
+    series: "Images/Series",
+    anime: "Images/Anime",
+    posters: "Images/Posters",
+    banners: "Images/Banners",
+    other: "Images/Other"
+};
 
 function getImageUrl(publicId) {
     return cloudinary.url(publicId, {
@@ -49,11 +49,11 @@ app.get("/api/images/:type/:id", async (req, res) => {
         const type = req.params.type.toLowerCase();
         const id = req.params.id;
 
-        if (!ALLOWED_TYPES.includes(type)) {
+        if (!FOLDERS[type]) {
             return res.status(400).json({
                 success: false,
                 error: "Invalid type",
-                allowedTypes: ALLOWED_TYPES
+                allowedTypes: Object.keys(FOLDERS)
             });
         }
 
@@ -64,37 +64,50 @@ app.get("/api/images/:type/:id", async (req, res) => {
             });
         }
 
-        // Find the Cloudinary image using ONLY the unique Public ID.
-        const asset = await cloudinary.api.resource(id, {
-            resource_type: "image",
-            type: "upload"
-        });
+        const folder = FOLDERS[type];
+
+        console.log("Looking for:");
+        console.log("Type:", type);
+        console.log("Folder:", folder);
+        console.log("Public ID:", id);
+
+        const result = await cloudinary.search
+            .expression(
+                `public_id="${id}" AND asset_folder="${folder}"`
+            )
+            .max_results(1)
+            .execute();
+
+        if (!result.resources || result.resources.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: "Image not found",
+                type: type,
+                id: id,
+                folder: folder
+            });
+        }
+
+        const asset = result.resources[0];
+
+        const imageUrl = getImageUrl(asset.public_id);
 
         res.json({
             success: true,
             type: type,
             id: id,
+            folder: folder,
             publicId: asset.public_id,
-            format: asset.format,
-            width: asset.width,
-            height: asset.height,
-            imageUrl: getImageUrl(asset.public_id)
+            imageUrl: imageUrl
         });
 
     } catch (error) {
-        console.error("Cloudinary error:", error);
-
-        if (error.error && error.error.http_code === 404) {
-            return res.status(404).json({
-                success: false,
-                error: "Image not found",
-                id: req.params.id
-            });
-        }
+        console.error("FULL CLOUDINARY ERROR:");
+        console.error(error);
 
         res.status(500).json({
             success: false,
-            error: error.message
+            error: error.message || "Cloudinary request failed"
         });
     }
 });
