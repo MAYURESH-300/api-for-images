@@ -64,20 +64,21 @@ app.get("/api/images/:type/:id", async (req, res) => {
             });
         }
 
-        // Check whether the Cloudinary asset exists.
+        // Find the Cloudinary image using ONLY the unique Public ID.
         const asset = await cloudinary.api.resource(id, {
             resource_type: "image",
             type: "upload"
         });
-
-        const imageUrl = getImageUrl(asset.public_id);
 
         res.json({
             success: true,
             type: type,
             id: id,
             publicId: asset.public_id,
-            imageUrl: imageUrl
+            format: asset.format,
+            width: asset.width,
+            height: asset.height,
+            imageUrl: getImageUrl(asset.public_id)
         });
 
     } catch (error) {
