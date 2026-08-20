@@ -4,7 +4,7 @@ const express = require("express");
 const cloudinary = require("cloudinary").v2;
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000 , "0.0.0.0";
 
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -50,6 +50,6 @@ app.get("/api/:id", (req, res) => {
     });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0" () => {
     console.log(`API running on port ${PORT}`);
 });
